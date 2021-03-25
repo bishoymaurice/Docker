@@ -1,0 +1,64 @@
+version: "3"
+
+services:
+  webserver:
+    image: nginx:${NGINX_TAG}
+    container_name: ${CONTAINER_NAME_NGINX}
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx/conf.d/site.conf:/etc/nginx/conf.d/default.conf
+      - ./config/nginx/ssl:/etc/ssl/
+      - ./src/:/app/
+    depends_on:
+      - php
+    networks:
+      - app-network
+
+  php:
+    image: web4u_php_fpm_composer:${PHP_TAG}
+    container_name: ${CONTAINER_NAME_PHP}
+    build:
+      context: .
+      dockerfile: dockerfile/php.dockerfile
+      args:
+        - PHP_TAG=${PHP_TAG}
+    environment:
+      - MYSQL_DATABASE
+      - MYSQL_HOST=${CONTAINER_NAME_MYSQL}
+      - MYSQL_USER
+      - MYSQL_PASSWORD
+      - MYSQL_LOYALTY_DATABASE
+    user: "root:root"
+    volumes:
+      - ./src/:/app/
+      - ./reports:/test_reports/
+    depends_on:
+      - database
+    networks:
+      - app-network
+  
+  database:
+    image: mysql:${MYSQL_TAG}
+    container_name: ${CONTAINER_NAME_MYSQL}
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - DATABASE_USERNAME=${MYSQL_USER}
+      - DATABASE_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - "./data/db/mysql:/var/lib/mysql"
+    entrypoint:
+      sh -c "
+        echo 'CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE}; CREATE DATABASE IF NOT EXISTS ${MYSQL_LOYALTY_DATABASE};' > /docker-entrypoint-initdb.d/init.sql;
+        /usr/local/bin/docker-entrypoint.sh --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --innodb_use_native_aio=0 --max_allowed_packet=256M
+      "
+    ports:
+      - "3306:3306"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
